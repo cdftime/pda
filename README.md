@@ -1,5 +1,14 @@
 # 💎 PocketLedger — 个人财务分析系统
+
 > 导入微信 / 支付宝账单，自动分类、清洗、可视化分析你的每一笔收支。
+
+[![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.138-009688?logo=fastapi)](https://fastapi.tiangolo.com/)
+[![Plotly](https://img.shields.io/badge/Plotly-29+-3F4F75?logo=plotly)](https://plotly.com/javascript/)
+[![License](https://img.shields.io/badge/License-MIT-green)](./LICENSE)
+
+---
+
 ## ✨ 功能一览
 
 | 模块 | 功能 |
@@ -36,7 +45,7 @@
 │         前端 static/ (Vanilla JS)            │
 │                                              │
 │  Plotly.js 29+ 交互图表                       │
-│  Glassmorphism 玻璃拟态设计                   │
+│  Glassmorphism 玻璃拟态设计                    │
 │  骨架屏加载 · Toast 提示 · 全屏展开            │
 └─────────────────────────────────────────────┘
 ```
@@ -241,4 +250,8 @@ tabulate             # 表格格式化
 - 微信导出格式为 `.xlsx`，支付宝导出格式为 `.csv`（均支持 GBK / UTF-8 编码自动检测）
 - 关闭浏览器页面后，后端服务会自动退出，不会常驻后台
 
+---
 
+<p align="center">
+  <sub>Built with ❤️ · FastAPI + Plotly.js · Offline-capable</sub>
+</p>
