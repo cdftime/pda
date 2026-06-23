@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PocketLedger · 架构与模块详解</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg: #F6F3F0;
+    --card: #FFFFFF;
+    --text: #1F2937;
+    --muted: #6B7280;
+    --accent: #4F6BED;
+    --purple: #8B5CF6;
+    --border: #E5E7EB;
+    --shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: "Inter","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    background: var(--bg); color: var(--text); padding: 40px; max-width: 1100px; margin: auto;
+    line-height: 1.6;
+  }
+
+  h1 { font-size: 28px; font-weight: 800; color: var(--accent); margin-bottom: 4px; }
+  h1 .icon { margin-right: 8px; }
+  .subtitle { color: var(--muted); font-size: 14px; margin-bottom: 36px; }
+
+  h2 {
+    font-size: 20px; font-weight: 700; margin: 44px 0 16px; color: var(--text);
+    border-bottom: 2px solid var(--border); padding-bottom: 10px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  h2 .num { color: var(--accent); font-size: 16px; }
+
+  h3 {
+    font-size: 16px; font-weight: 700; margin: 28px 0 12px; color: var(--text);
+  }
+
+  .mermaid {
+    background: var(--card); border-radius: 14px; padding: 24px; margin: 16px 0;
+    border: 1px solid var(--border); box-shadow: var(--shadow);
+    overflow-x: auto;
+  }
+
+  .card {
+    background: var(--card); border-radius: 14px; padding: 24px; margin: 16px 0;
+    border: 1px solid var(--border); box-shadow: var(--shadow);
+  }
+
+  table {
+    width: 100%; border-collapse: collapse; margin: 12px 0;
+    font-size: 14px;
+  }
+  th, td {
+    text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border);
+  }
+  th { background: #F9FAFB; font-weight: 700; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+  tr:hover td { background: #F9FAFB; }
+
+  .code-block {
+    background: #1F2937; color: #E5E7EB; border-radius: 10px; padding: 18px 22px;
+    font-family: "JetBrains Mono","Fira Code","Consolas",monospace;
+    font-size: 13px; line-height: 1.7; margin: 12px 0; overflow-x: auto;
+  }
+
+  .steps {
+    counter-reset: step; list-style: none; padding: 0;
+  }
+  .steps li {
+    counter-increment: step; padding: 6px 0 6px 32px; position: relative;
+    font-size: 14px; font-family: "JetBrains Mono","Fira Code","Consolas",monospace;
+  }
+  .steps li::before {
+    content: counter(step); position: absolute; left: 0; top: 8px;
+    width: 20px; height: 20px; border-radius: 6px; background: var(--accent);
+    color: #fff; font-size: 11px; font-weight: 700; text-align: center; line-height: 20px;
+  }
+
+  .tag {
+    display: inline-block; padding: 2px 10px; border-radius: 6px;
+    font-size: 12px; font-weight: 600; margin: 0 4px 4px 0;
+  }
+  .tag-py { background: #EEF2FF; color: #4F6BED; }
+  .tag-fe { background: #F5F3FF; color: #8B5CF6; }
+  .tag-db { background: #D1FAE5; color: #059669; }
+  .tag-util { background: #FFFBEB; color: #D97706; }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+
+  @media (max-width: 768px) {
+    body { padding: 20px; }
+    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    .tree-root { margin-left: 0; }
+  }
+
+  /* ── Directory Tree ── */
+  .tree-root {
+    background: var(--card); border-radius: 16px; padding: 28px 32px;
+    border: 1px solid var(--border); box-shadow: var(--shadow);
+    font-family: "JetBrains Mono","Fira Code","Consolas",monospace;
+    font-size: 13.5px; line-height: 2.1; overflow-x: auto;
+    user-select: none;
+  }
+
+  .tree-folder { cursor: pointer; }
+  .tree-folder summary {
+    list-style: none; display: flex; align-items: center; gap: 6px;
+    padding: 2px 6px; margin: 1px 0; border-radius: 6px; transition: background 0.15s;
+  }
+  .tree-folder summary:hover { background: #F3F4F6; }
+  .tree-folder summary::-webkit-details-marker { display: none; }
+
+  .tree-arrow {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 18px; height: 18px; font-size: 10px; color: var(--muted);
+    transition: transform 0.2s; flex-shrink: 0;
+  }
+  .tree-folder[open] > summary .tree-arrow { transform: rotate(90deg); }
+
+  .tree-icon { font-size: 15px; flex-shrink: 0; width: 20px; text-align: center; }
+  .tree-name { font-weight: 600; color: var(--text); }
+  .tree-file .tree-name { font-weight: 400; }
+
+  .tree-badge {
+    display: inline-block; padding: 1px 8px; border-radius: 10px;
+    font-size: 11px; font-weight: 600; font-family: "Inter","PingFang SC",sans-serif;
+    white-space: nowrap;
+  }
+  .badge-core { background: #EEF2FF; color: #4F6BED; }
+  .badge-py   { background: #FEF3C7; color: #D97706; }
+  .badge-fe   { background: #EDE9FE; color: #7C3AED; }
+  .badge-data { background: #D1FAE5; color: #059669; }
+  .badge-util { background: #F3F4F6; color: #6B7280; }
+
+  .tree-hint {
+    color: var(--muted); font-size: 12px; font-family: "Inter","PingFang SC",sans-serif;
+    margin-left: 4px; font-style: italic;
+  }
+
+  .tree-children { margin-left: 22px; border-left: 1.5px solid var(--border); padding-left: 12px; }
+  .tree-file {
+    display: flex; align-items: center; gap: 6px; padding: 2px 6px; margin: 1px 0;
+    border-radius: 6px; transition: background 0.15s;
+  }
+  .tree-file:hover { background: #F9FAFB; }
+
+  .tree-summary-row { display: flex; align-items: center; gap: 6px; flex: 1; }
+</style>
+</head>
+<body>
+
+<h1><span class="icon">💎</span>PocketLedger 架构文档</h1>
+<p class="subtitle">个人财务分析系统 · 模块架构 · 数据流转 · API 全景 · 分类体系</p>
+
+<!-- ============== 1. 目录结构 ============== -->
+<h2><span class="num">1</span> 项目目录结构</h2>
+<div class="tree-root">
+
+  <!-- pocketledger/ root -->
+  <details class="tree-folder" open>
+  <summary>
+    <span class="tree-arrow">▶</span>
+    <span class="tree-icon">📁</span>
+    <span class="tree-name">pocketledger/</span>
+    <span class="tree-badge badge-core">一键启动 · 零依赖</span>
+  </summary>
+  <div class="tree-children">
+
+    <!-- python/ -->
+    <details class="tree-folder" open>
+    <summary>
+      <span class="tree-arrow">▶</span>
+      <span class="tree-icon">🐍</span>
+      <span class="tree-name">python/</span>
+      <span class="tree-badge badge-core">内置 Python 3.11</span>
+      <span class="tree-hint">免安装 · 约 80MB</span>
+    </summary>
+    <div class="tree-children">
+      <div class="tree-file">
+        <span style="width:12px;flex-shrink:0"></span><span class="tree-icon">⚙️</span>
+        <span class="tree-name">python.exe</span>
+        <span class="tree-hint">Windows 解释器</span>
+      </div>
+      <details class="tree-folder">
+      <summary>
+        <span class="tree-arrow">▶</span>
+        <span class="tree-icon">📦</span>
+        <span class="tree-name">Lib/site-packages/</span>
+        <span class="tree-hint">所有第三方依赖</span>
+      </summary>
+      <div class="tree-children">
+        <div class="tree-file"><span style="width:12px"></span><span class="tree-icon" style="font-size:12px">●</span><span class="tree-name">fastapi</span><span class="tree-hint">v0.138</span></div>
+        <div class="tree-file"><span style="width:12px"></span><span class="tree-icon" style="font-size:12px">●</span><span class="tree-name">pandas</span><span class="tree-hint">v3.0</span></div>
+        <div class="tree-file"><span style="width:12px"></span><span class="tree-icon" style="font-size:12px">●</span><span class="tree-name">numpy · prophet · statsmodels</span><span class="tree-hint">+ 更多</span></div>
+      </div>
+      </details>
+    </div>
+    </details>
+
+    <!-- wheels/ -->
+    <details class="tree-folder">
+    <summary>
+      <span class="tree-arrow">▶</span>
+      <span class="tree-icon">🎡</span>
+      <span class="tree-name">wheels/</span>
+      <span class="tree-badge badge-util">45 个离线包</span>
+      <span class="tree-hint">无网也能装 · 约 112MB</span>
+    </summary>
+    </details>
+
+    <!-- start/ -->
+    <details class="tree-folder" open>
+    <summary>
+      <span class="tree-arrow">▶</span>
+      <span class="tree-icon">🚀</span>
+      <span class="tree-name">start/</span>
+      <span class="tree-badge badge-core">入口</span>
+    </summary>
+    <div class="tree-children">
+      <div class="tree-file">
+        <span style="width:12px"></span><span class="tree-icon">⚡</span>
+        <span class="tree-name">start.bat</span>
+        <span class="tree-badge badge-core">双击启动</span>
+      </div>
+      <div class="tree-file">
+        <span style="width:12px"></span><span class="tree-icon">📜</span>
+        <span class="tree-name">start.sh</span>
+        <span class="tree-hint">Linux / macOS</span>
+      </div>
+      <div class="tree-file">
+        <span style="width:12px"></span><span class="tree-icon">📋</span>
+        <span class="tree-name">requirements.txt</span>
+        <span class="tree-hint">10 个包</span>
+      </div>
+    </div>
+    </details>
+
+    <!-- src/ -->
+    <details class="tree-folder" open>
+    <summary>
+      <span class="tree-arrow">▶</span>
+      <span class="tree-icon">🐍</span>
+      <span class="tree-name">src/</span>
+      <span class="tree-badge badge-py">Python 后端</span>
+    </summary>
+    <div class="tree-children">
+      <div class="tree-file">
+        <span style="width:12px"></span><span class="tree-icon">⭐</span>
+        <span class="tree-name">mypayment_api.py</span>
+        <span class="tree-badge badge-core">主入口</span>
+        <span class="tree-hint">FastAPI · 30+ 端点</span>
+      </div>
+      <div class="tree-file">
+        <span style="width:12px"></span><span class="tree-icon">🧹</span>
+        <span class="tree-name">mypayment_clean.py</span>
+        <span class="tree-hint">10 步清洗流水线</span>
+      </div>
+      <div class="tree-file">
+        <span style="width:12px"></span><span class="tree-icon">🔀</span>
+        <span class="tree-name">mypayment_merge.py</span>
+        <span class="tree-hint">微信 + 支付宝</span>
+      </div>
+      <div class="tree-file">
+        <span style="width:12px"></span><span class="tree-icon">📊</span>
+        <span class="tree-name">mypayment_metrics.py</span>
+        <span class="tree-hint">15+ 指标函数</span>
+      </div>
+      <div class="tree-file">
+        <span style="width:12px"></span><span class="tree-icon">🏷️</span>
+        <span class="tree-name">category_keywords.json</span>
+        <span class="tree-hint">10 大类 · 20 细类</span>
+      </div>
+      <div class="tree-file">
+        <span style="width:12px"></span><span class="tree-icon">🗑️</span>
+        <span class="tree-name">clear_data.py</span>
+        <span class="tree-hint">数据清除</span>
+      </div>
+    </div>
+    </details>
+
+    <!-- static/ -->
+    <details class="tree-folder" open>
+    <summary>
+      <span class="tree-arrow">▶</span>
+      <span class="tree-icon">🌐</span>
+      <span class="tree-name">static/</span>
+      <span class="tree-badge badge-fe">前端</span>
+    </summary>
+    <div class="tree-children">
+      <div class="tree-file">
+        <span style="width:12px"></span><span class="tree-icon">📄</span>
+        <span class="tree-name">index.html</span>
+        <span class="tree-hint">~120 行</span>
+      </div>
+      <div class="tree-file">
+        <span style="width:12px"></span><span class="tree-icon">🎨</span>
+        <span class="tree-name">style.css</span>
+        <span class="tree-hint">玻璃拟态 · ~500 行</span>
+      </div>
+      <div class="tree-file">
+        <span style="width:12px"></span><span class="tree-icon">📈</span>
+        <span class="tree-name">app.js</span>
+        <span class="tree-badge badge-fe">交互核心</span>
+        <span class="tree-hint">Plotly 29+ 图表 · ~1400 行</span>
+      </div>
+    </div>
+    </details>
+
+    <!-- explain/ -->
+    <details class="tree-folder">
+    <summary>
+      <span class="tree-arrow">▶</span>
+      <span class="tree-icon">📖</span>
+      <span class="tree-name">explain/</span>
+      <span class="tree-badge badge-util">文档</span>
+    </summary>
+    <div class="tree-children">
+      <div class="tree-file">
+        <span style="width:12px"></span><span class="tree-icon">📘</span>
+        <span class="tree-name">README.md</span>
+        <span class="tree-hint">使用说明</span>
+      </div>
+      <div class="tree-file">
+        <span style="width:12px"></span><span class="tree-icon">📐</span>
+        <span class="tree-name">architecture.html</span>
+        <span class="tree-badge badge-core">本页</span>
+        <span class="tree-hint">架构全景</span>
+      </div>
+      <div class="tree-file">
+        <span style="width:12px"></span><span class="tree-icon">📐</span>
+        <span class="tree-name">ARCHITECTURE.md</span>
+        <span class="tree-hint">Markdown 源码</span>
+      </div>
+      <div class="tree-file">
+        <span style="width:12px"></span><span class="tree-icon">📊</span>
+        <span class="tree-name">diagrams.html</span>
+        <span class="tree-hint">精简架构图</span>
+      </div>
+    </div>
+    </details>
+
+    <!-- data / predata / logs -->
+    <div class="tree-file">
+      <span class="tree-icon">💾</span>
+      <span class="tree-name">data/</span>
+      <span class="tree-badge badge-data">账单数据</span>
+      <span class="tree-hint">my_payment.csv · 启动自动创建</span>
+    </div>
+    <div class="tree-file">
+      <span class="tree-icon">📥</span>
+      <span class="tree-name">predata/</span>
+      <span class="tree-badge badge-data">待合并</span>
+      <span class="tree-hint">上传的原始账单 · 自动创建</span>
+    </div>
+    <div class="tree-file">
+      <span class="tree-icon">📝</span>
+      <span class="tree-name">logs/</span>
+      <span class="tree-badge badge-util">日志</span>
+      <span class="tree-hint">自动创建</span>
+    </div>
+
+  </div>
+  </details><!-- /pocketledger -->
+
+</div>
+
+<!-- ============== 2. 整体架构 ============== -->
+<h2><span class="num">2</span> 模块架构总览</h2>
+<div class="mermaid">
+flowchart TB
+    subgraph UPLOAD["📂 上传层"]
+        PX["微信 .xlsx"]
+        PC["支付宝 .csv"]
+    end
+
+    subgraph BACKEND["🐍 Python 后端"]
+        MERGE["mypayment_merge.py<br/>账单合并"]
+        CLEAN["mypayment_clean.py<br/>数据清洗"]
+        METRICS["mypayment_metrics.py<br/>指标计算 (15+ 函数)"]
+        API["mypayment_api.py<br/>FastAPI · 30+ 端点"]
+        KW["category_keywords.json<br/>分类关键词"]
+        CSV[("data/<br/>my_payment.csv")]
+        LOG[("logs/")]
+    end
+
+    subgraph FRONTEND["🌐 前端 static/"]
+        HTML["index.html"]
+        CSS["style.css"]
+        JS["app.js · Plotly 29+ 图表"]
+    end
+
+    subgraph OUTPUT["📊 输出"]
+        C1["统计卡片"]
+        C2["Plotly 图表"]
+        C3["数据表格"]
+    end
+
+    PX & PC -->|拖拽上传| API
+    API -->|POST /merge-and-clean| MERGE
+    MERGE -->|解析·去重·写入| CSV
+    CSV -->|pd.read_csv| CLEAN
+    CLEAN -->|清洗后 _df| METRICS
+    CLEAN -->|_df 全局变量| API
+    KW -->|加载关键词| METRICS
+    METRICS -->|compute_* 函数| API
+    API -->|写入| LOG
+    API -->|REST JSON| JS
+    JS -->|Plotly.newPlot| C2
+    JS -->|innerHTML| C1 & C3
+    HTML -->|DOM| JS
+    CSS -->|样式| C1 & C2 & C3
+</div>
+
+<!-- ============== 3. 数据流转时序 ============== -->
+<h2><span class="num">3</span> 数据流转时序</h2>
+<div class="mermaid">
+sequenceDiagram
+    participant U as 👤 用户
+    participant B as 🌐 浏览器
+    participant A as ⚡ FastAPI
+    participant M as 🔀 merge.py
+    participant C as 🧹 clean.py
+    participant MT as 📊 metrics.py
+    participant CSV as 💾 my_payment.csv
+
+    Note over U,CSV: ═══ 上传 & 合并 ═══
+    U->>B: 拖拽 .xlsx / .csv 文件
+    B->>A: POST /api/upload (multipart)
+    A->>A: 保存到 predata/
+    B->>A: POST /api/merge-and-clean
+    A->>M: merge_predata()
+    M->>M: 扫描 predata/* 全部文件
+    M->>M: 解析 WeChat XLSX + Alipay CSV
+    M->>M: 按 (时间|商户|金额) 去重
+    M->>CSV: 写入 13 列统一格式
+    M-->>A: 合并完成
+    A->>C: clean_data()
+    C->>CSV: 读取 CSV
+    C->>C: 10步清洗流水线
+    C-->>A: 清洗后 DataFrame (_df)
+    A-->>B: JSON 响应
+
+    Note over U,CSV: ═══ 仪表盘加载 ═══
+    B->>U: 骨架屏加载动画
+    B->>A: GET /api/summary
+    A->>MT: compute_monthly_stats()
+    A->>MT: classify_expenses()
+    A->>MT: compute_financial_indicators()
+    A->>MT: compute_health_score()
+    MT-->>A: 统计数据
+    A-->>B: JSON
+    B->>B: 数字滚动动画 · 6卡片 + 4图表
+
+    Note over U,CSV: ═══ 分析钻取 ═══
+    U->>B: 选择 按月→2026年
+    B->>A: GET /api/drill-level?level=month&year=2026
+    A->>A: 过滤 _df[year==2026] · 按月分组
+    A-->>B: 6个月支出 + 分类 + Top5
+    B->>B: Plotly 柱状图 (1月~6月)
+</div>
+
+<!-- ============== 4. 模块详解 ============== -->
+<h2><span class="num">4</span> 模块详解</h2>
+
+<h3>4.1 <code>mypayment_merge.py</code> — 账单合并</h3>
+<div class="card">
+  <div class="code-block">
+find_all_predata_files()    扫描 predata/ 下所有 CSV / XLSX
+      ↓
+_parse_wechat(path)         微信 XLSX → 统一 13 列 DataFrame
+_parse_alipay(path)         支付宝 CSV (GBK→UTF-8 自动检测) → DataFrame
+      ↓
+_pad_columns(df)            补齐缺失列，保证 13 列一致
+      ↓
+merge_predata(...)           主流程：扫描→解析→去重→写入 CSV
+  </div>
+  <table>
+    <tr><th>去重规则</th><th>说明</th></tr>
+    <tr><td>跨源去重</td><td>仅主数据与 predata 之间去重，predata 内不去重</td></tr>
+    <tr><td>匹配键</td><td><code>order_time[:19] | keeper | order_amount</code> 三字段拼接</td></tr>
+    <tr><td>策略</td><td><code>keep='first'</code> — 保留已有数据优先，新数据追加</td></tr>
+  </table>
+</div>
+
+<h3>4.2 <code>mypayment_clean.py</code> — 数据清洗</h3>
+<div class="card">
+  <p style="margin-bottom:12px;font-size:14px"><code>clean_data(csv_path) → DataFrame</code></p>
+  <ol class="steps">
+    <li>时间转换 — <code>pd.to_datetime(dayfirst=False, format='mixed')</code></li>
+    <li>金额转换 — 去 ¥ / , → <code>numeric</code></li>
+    <li>goods '/' → 空字符串</li>
+    <li>文本清洗 — <code>\n\r\t</code> → 空格 (6列)</li>
+    <li>keeper <code>'^发给'</code> 前缀去除</li>
+    <li>退款标记 — order_type / status 含 '退款'</li>
+    <li>去重 — 仅对非空 <code>order_num</code> 去重 (保留空订单号行)</li>
+    <li>ID 重编号</li>
+    <li>时间派生 — month / weekday / hour</li>
+    <li>质量报告 — NaT / NaN / 退款 / 空 goods 统计</li>
+  </ol>
+</div>
+
+<h3>4.3 <code>mypayment_metrics.py</code> — 指标计算</h3>
+<div class="card">
+  <p style="margin-bottom:14px;font-size:14px">15+ 计算函数，从基础月度统计到 Prophet 预测：</p>
+  <table>
+    <tr><th>函数</th><th>返回</th><th>用途</th></tr>
+    <tr><td><code>compute_monthly_stats(df)</code></td><td>月度收支平衡表</td><td>趋势图 · 资产累积图</td></tr>
+    <tr><td><code>classify_expenses(df)</code></td><td>10 大类标注</td><td>分类饼图</td></tr>
+    <tr><td><code>classify_expenses_fine(df)</code></td><td>20 细分类标注</td><td>细粒度分析</td></tr>
+    <tr><td><code>compute_financial_indicators(df)</code></td><td>恩格尔系数 · 储蓄率 · 多样性 · CV</td><td>财务健康仪表</td></tr>
+    <tr><td><code>compute_health_score(df, budget)</code></td><td>0-100 综合评分</td><td>健康卡片</td></tr>
+    <tr><td><code>get_filter_options(df)</code></td><td>年/月/类目列表</td><td>筛选下拉框</td></tr>
+    <tr><td><code>filter_dataframe(df, ...)</code></td><td>筛选后数据</td><td>钻取 · 搜索</td></tr>
+    <tr><td><code>compute_merchant_rfm(df)</code></td><td>RFM 分析</td><td>商户价值分层</td></tr>
+    <tr><td><code>detect_anomalies(df, sigma=3)</code></td><td>3σ 异常交易</td><td>异常监控</td></tr>
+    <tr><td><code>compute_diversity_trend(df)</code></td><td>月度香农熵</td><td>消费多样性趋势</td></tr>
+    <tr><td><code>detect_mom_anomalies(df)</code></td><td>环比飙升类别</td><td>预警表</td></tr>
+    <tr><td><code>compute_drill_month(df, ym)</code></td><td>单月深度分析</td><td>钻取明细</td></tr>
+    <tr><td><code>compute_month_comparison(df, a, b)</code></td><td>两月对比</td><td>对比面板</td></tr>
+    <tr><td><code>compute_association_rules(df, level)</code></td><td>Apriori 关联规则</td><td>商户/商品/品类级</td></tr>
+    <tr><td><code>compute_category_monthly_trend(df)</code></td><td>分类月度矩阵</td><td>热力图</td></tr>
+    <tr><td><code>forecast_expense(series, periods)</code></td><td>Prophet 预测</td><td>预测面板</td></tr>
+  </table>
+</div>
+
+<h3>4.4 <code>mypayment_api.py</code> — FastAPI 后端</h3>
+<div class="card">
+  <p style="margin-bottom:12px;font-size:14px">30+ REST 端点，单文件架构，启动时自动清理端口 + 重试：</p>
+  <table>
+    <tr><th>分类</th><th>端点</th><th>方法</th><th>说明</th></tr>
+    <tr><td rowspan="3" style="vertical-align:top">核心数据</td><td><code>/api/dashboard</code></td><td>GET</td><td>总览仪表盘（财务指标 + 健康评分）</td></tr>
+    <tr><td><code>/api/year-months</code></td><td>GET</td><td>年份/月份列表</td></tr>
+    <tr><td><code>/api/filter-options</code></td><td>GET</td><td>筛选器选项</td></tr>
+    <tr style="background:#F9FAFB"><td colspan="4" style="padding:2px"></td></tr>
+    <tr><td rowspan="4" style="vertical-align:top">总览图表</td><td><code>/api/monthly-expense</code></td><td>GET</td><td>月度支出趋势</td></tr>
+    <tr><td><code>/api/categories</code></td><td>GET</td><td>分类占比</td></tr>
+    <tr><td><code>/api/asset-trend</code></td><td>GET</td><td>资产累积趋势</td></tr>
+    <tr><td><code>/api/yearly-top3</code></td><td>GET</td><td>年度支出 Top3</td></tr>
+    <tr style="background:#F9FAFB"><td colspan="4" style="padding:2px"></td></tr>
+    <tr><td rowspan="13" style="vertical-align:top">分析面板</td><td><code>/api/category-monthly-trend</code></td><td>GET</td><td>分类月度热力图</td></tr>
+    <tr><td><code>/api/drill-level</code></td><td>GET</td><td>多级钻取 (年→季→月→日)</td></tr>
+    <tr><td><code>/api/month-compare</code></td><td>GET</td><td>任意两月对比</td></tr>
+    <tr><td><code>/api/diversity-trend</code></td><td>GET</td><td>消费多样性趋势</td></tr>
+    <tr><td><code>/api/mom-anomalies</code></td><td>GET</td><td>环比异常检测</td></tr>
+    <tr><td><code>/api/forecast</code></td><td>GET</td><td>Prophet 预测</td></tr>
+    <tr><td><code>/api/decompose</code></td><td>GET</td><td>STL 时序分解</td></tr>
+    <tr><td><code>/api/anomalies</code></td><td>GET</td><td>3σ 异常交易</td></tr>
+    <tr><td><code>/api/holidays</code></td><td>GET</td><td>节假日消费对比</td></tr>
+    <tr><td><code>/api/merchants</code></td><td>GET</td><td>商户排名 & RFM</td></tr>
+    <tr><td><code>/api/association-rules</code></td><td>GET</td><td>关联规则挖掘 (3级别)</td></tr>
+    <tr><td><code>/api/social</code></td><td>GET</td><td>社交转账排名</td></tr>
+    <tr><td><code>/api/search</code></td><td>GET</td><td>模糊搜索</td></tr>
+    <tr style="background:#F9FAFB"><td colspan="4" style="padding:2px"></td></tr>
+    <tr><td rowspan="4" style="vertical-align:top">数据管理</td><td><code>/api/upload</code></td><td>POST</td><td>上传账单文件</td></tr>
+    <tr><td><code>/api/uploads</code></td><td>GET</td><td>列出已上传文件</td></tr>
+    <tr><td><code>/api/delete-upload/{name}</code></td><td>DELETE</td><td>删除上传文件</td></tr>
+    <tr><td><code>/api/merge</code></td><td>POST</td><td>合并到主数据</td></tr>
+    <tr style="background:#F9FAFB"><td colspan="4" style="padding:2px"></td></tr>
+    <tr><td rowspan="2" style="vertical-align:top">系统</td><td><code>/api/heartbeat</code></td><td>POST</td><td>浏览器心跳 (25s 无则释放端口)</td></tr>
+    <tr><td><code>/api/system-messages</code></td><td>GET</td><td>系统消息</td></tr>
+    <tr style="background:#F9FAFB"><td colspan="4" style="padding:2px"></td></tr>
+    <tr><td rowspan="1" style="vertical-align:top">其他</td><td><code>/api/clear-data</code></td><td>POST</td><td>清除所有数据</td></tr>
+    <tr><td><code>/api/dashboard-config</code></td><td>GET</td><td>仪表板配置 (预算等)</td></tr>
+  </table>
+</div>
+
+<h3>4.5 前端 <code>static/</code></h3>
+<div class="card">
+  <table>
+    <tr><th>文件</th><th>职责</th><th>规模</th></tr>
+    <tr><td><code>index.html</code></td><td>语义化 HTML5，双页面布局，骨架屏占位</td><td>~120 行</td></tr>
+    <tr><td><code>style.css</code></td><td>CSS 变量驱动，玻璃拟态，Toast / 骨架屏 / 彩色卡片 / 折叠介绍 / 网络图例</td><td>~500 行</td></tr>
+    <tr><td><code>app.js</code></td><td>Plotly 29+ 图表，懒加载子标签，数字动画，Toast 通知，ARIA 联动，心跳保活</td><td>~1400 行</td></tr>
+  </table>
+</div>
+
+<!-- ============== 5. 清洗流水线 ============== -->
+<h2><span class="num">5</span> 清洗流水线</h2>
+<div class="mermaid">
+flowchart TD
+    S1["1. 时间转换<br/>pd.to_datetime dayfirst=False"] -->
+    S2["2. 金额转换<br/>去 ¥/, → numeric"] -->
+    S3["3. goods '/' → 空字符串"] -->
+    S4["4. 文本清洗<br/>6列 \\n\\r\\t → 空格"] -->
+    S5["5. keeper '^发给' 去除"] -->
+    S6["6. 退款标记<br/>order_type/status 含 '退款'"] -->
+    S7["7. 去重<br/>仅对非空 order_num 去重<br/>保留空订单号行"] -->
+    S8["8. ID 重编号"] -->
+    S9["9. 时间派生<br/>month / weekday / hour"] -->
+    S10["10. 质量报告<br/>NaT / NaN / 退款 / 空goods"]
+</div>
+
+<!-- ============== 6. 分类关键词体系 ============== -->
+<h2><span class="num">6</span> 分类关键词体系</h2>
+<div class="card">
+  <div class="grid-2">
+    <div>
+      <h3 style="margin-top:0">粗分类 (10类)</h3>
+      <table>
+        <tr><td>🍔 餐饮</td><td>80+ 关键词</td></tr>
+        <tr><td>🚗 交通出行</td><td>40+ 关键词</td></tr>
+        <tr><td>🛍 购物消费</td><td>60+ 关键词</td></tr>
+        <tr><td>🏠 生活日用</td><td>40+ 关键词</td></tr>
+        <tr><td>📱 通讯网络</td><td>10 关键词</td></tr>
+        <tr><td>🏢 居住缴费</td><td>15 关键词</td></tr>
+        <tr><td>🏥 医疗健康</td><td>15 关键词</td></tr>
+        <tr><td>📚 教育培训</td><td>20 关键词</td></tr>
+        <tr><td>💸 转账红包</td><td>5 关键词</td></tr>
+        <tr><td>❓ 其他</td><td>兜底</td></tr>
+      </table>
+    </div>
+    <div>
+      <h3 style="margin-top:0">细分类 (20类)</h3>
+      <table>
+        <tr><td>外卖</td><td>← 餐饮</td></tr>
+        <tr><td>茶饮咖啡</td><td>← 餐饮</td></tr>
+        <tr><td>正餐</td><td>← 餐饮</td></tr>
+        <tr><td>共享出行</td><td>← 交通出行</td></tr>
+        <tr><td>网约车</td><td>← 交通出行</td></tr>
+        <tr><td>公共交通</td><td>← 交通出行</td></tr>
+        <tr><td>电商网购</td><td>← 购物消费</td></tr>
+        <tr><td>超市便利</td><td>← 购物消费</td></tr>
+        <tr><td>服饰鞋包</td><td>← 购物消费</td></tr>
+        <tr><td>数码电器</td><td>← 购物消费</td></tr>
+        <tr><td>游戏娱乐</td><td>← 购物消费</td></tr>
+        <tr><td>影音演出</td><td>← 购物消费</td></tr>
+        <tr><td>话费充值</td><td>← 通讯网络</td></tr>
+        <tr><td>水电气</td><td>← 居住缴费</td></tr>
+        <tr><td>房租贷款</td><td>← 居住缴费</td></tr>
+        <tr><td>医疗</td><td>← 医疗健康</td></tr>
+        <tr><td>健身</td><td>← 医疗健康</td></tr>
+        <tr><td>美容美发</td><td>← 生活日用</td></tr>
+        <tr><td>教育培训</td><td>← 教育培训</td></tr>
+        <tr><td>转账红包</td><td>← 转账红包</td></tr>
+      </table>
+    </div>
+  </div>
+  <p style="font-size:13px;color:var(--muted);margin-top:12px">
+    算法：在 <code>goods + keeper</code> 字段中匹配关键词，优先级从粗到细
+  </p>
+</div>
+
+<!-- ============== 7. 关联规则 ============== -->
+<h2><span class="num">7</span> 关联规则挖掘 (3 级别)</h2>
+<div class="mermaid">
+flowchart TB
+    subgraph LEVEL["Apriori · 按周购物篮"]
+        L1["商户级别 (merchant)<br/>basket_key = keeper<br/>min_weeks ≥ 5 · Lift > 2.5<br/>—<br/>食堂超市 → 合作食堂 Lift = 6.5"]
+        L2["商品级别 (goods)<br/>basket_key = keeper + goods<br/>min_weeks ≥ 3 · Lift > 1.5<br/>—<br/>东北饺子馆 → 馨永餐饮店 Lift = 7.3"]
+        L3["分类级别 (category)<br/>basket_key = fine_category<br/>min_weeks ≥ 3 · Lift > 1.2<br/>—<br/>教育培训 → 正餐 Lift = 1.4"]
+    end
+</div>
+
+<!-- ============== 8. 前端加载时序 ============== -->
+<h2><span class="num">8</span> 前端加载时序</h2>
+<div class="mermaid">
+flowchart TD
+    INIT["init() 页面加载"] -->
+    FETCH["Promise.all<br/>GET /api/dashboard<br/>GET /api/year-months"] -->
+    CARDS["renderSummaryCards()<br/>6 张统计卡片 + accent 颜色"] -->
+    ANIM["animateNumbers()<br/>数字从 0 滚到目标值<br/>cubic ease-out 800ms"] -->
+    DASH["loadDashboard()"]
+    FETCH --> MSG["fetchMessages()<br/>系统消息列"]
+    DASH --> CH1["ov-expense<br/>月度支出柱状图"]
+    DASH --> CH2["ov-cat-pie<br/>分类环形图"]
+    DASH -.->|异步| CH3["ov-assets<br/>资产趋势"]
+    DASH -.->|异步| CH4["loadYearlyTop3()"]
+</div>
+
+<!-- ============== 9. 技术栈 ============== -->
+<h2><span class="num">9</span> 关键技术栈</h2>
+<div class="card">
+  <table>
+    <tr><th>层级</th><th>技术</th></tr>
+    <tr><td>后端框架</td><td><span class="tag tag-py">FastAPI</span> <span class="tag tag-py">uvicorn</span></td></tr>
+    <tr><td>数据处理</td><td><span class="tag tag-py">pandas</span> <span class="tag tag-py">numpy</span></td></tr>
+    <tr><td>关联规则</td><td><span class="tag tag-py">mlxtend</span> (Apriori)</td></tr>
+    <tr><td>预测</td><td><span class="tag tag-py">Prophet</span> (Meta)</td></tr>
+    <tr><td>时序分解</td><td><span class="tag tag-py">statsmodels</span> (STL)</td></tr>
+    <tr><td>Excel 解析</td><td><span class="tag tag-py">openpyxl</span></td></tr>
+    <tr><td>表格输出</td><td><span class="tag tag-py">tabulate</span></td></tr>
+    <tr><td>文件上传</td><td><span class="tag tag-py">python-multipart</span></td></tr>
+    <tr><td>图表</td><td><span class="tag tag-fe">Plotly.js</span> 3.1.0 (CDN)</td></tr>
+    <tr><td>设计</td><td><span class="tag tag-fe">玻璃拟态</span> <span class="tag tag-fe">CSS 变量</span> <span class="tag tag-fe">骨架屏</span></td></tr>
+    <tr><td>离线分发</td><td><span class="tag tag-util">内置 Python 3.11</span> <span class="tag tag-util">wheel 离线包 ×45</span></td></tr>
+    <tr><td>数据格式</td><td><span class="tag tag-db">CSV UTF-8 BOM</span> <span class="tag tag-db">XLSX (openpyxl)</span></td></tr>
+  </table>
+</div>
+
+<!-- ============== 10. 启动流程 ============== -->
+<h2><span class="num">10</span> start.bat 启动流程</h2>
+<div class="mermaid">
+flowchart TD
+    DBL["双击 start.bat"] --> CD["cd 到 pocketledger/"]
+    CD --> CHK1{"python\\python.exe 存在?"}
+    CHK1 -->|否| ERR["❌ 提示项目不完整"]
+    CHK1 -->|是| DEP{"10 个导入通过?"}
+    DEP -->|是| DIR["创建 data/ predata/ logs/"]
+    DEP -->|否| INSTALL["4 层瀑布安装<br/>wheels/ → 清华镜像 → 中科大 → PyPI"]
+    INSTALL -->|成功| DIR
+    INSTALL -->|失败| ERR2["打印排查清单退出"]
+    DIR --> SRV["python\\python.exe<br/>src\\mypayment_api.py"]
+    SRV -->|退出码 0| DONE["Server stopped.<br/>pause 等待用户关闭"]
+    SRV -->|退出码 ≠0| RETRY["检测端口状态<br/>空闲→重启 (≤3次)<br/>占用→认为还活着"]
+    RETRY -->|3次全崩| ASK["询问用户<br/>Restart [Y/N]?"]
+</div>
+
+<!-- ============== Footer ============== -->
+<div style="text-align:center;padding:40px 0 20px;color:var(--muted);font-size:12px">
+  PocketLedger · Architecture Overview · 2026
+</div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    themeVariables: {
+      fontFamily: '"Inter","PingFang SC","Microsoft YaHei",sans-serif',
+      primaryColor: '#EEF2FF',
+      primaryBorderColor: '#4F6BED',
+      primaryTextColor: '#1F2937',
+      lineColor: '#8B5CF6',
+      secondaryColor: '#F5F3FF',
+      tertiaryColor: '#F6F3F0',
+      noteBkgColor: '#FFFBEB',
+      noteTextColor: '#1F2937',
+    },
+  });
+</script>
+
+</body>
+</html>

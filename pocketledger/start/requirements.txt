@@ -1,0 +1,10 @@
+fastapi
+pandas
+numpy
+openpyxl
+mlxtend
+prophet
+statsmodels
+tabulate
+uvicorn
+python-multipart

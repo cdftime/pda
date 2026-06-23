@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="PocketLedger · 个人财务分析仪表盘">
+<title>PocketLedger · 个人财务</title>
+<link rel="stylesheet" href="style.css?v=3">
+<script src="https://cdn.plot.ly/plotly-3.1.0.min.js"></script>
+</head>
+<body>
+
+<header>
+  <nav class="top-nav" role="navigation" aria-label="主导航">
+    <div class="logo">💎 <span>PocketLedger</span></div>
+    <div class="nav-links">
+      <button class="nav-link active" data-page="dashboard" aria-selected="true">📊 总览</button>
+      <button class="nav-link" data-page="analysis" aria-selected="false">🔬 分析</button>
+    </div>
+    <div class="meta">数据范围：<span id="date-range">—</span></div>
+  </nav>
+</header>
+
+<main>
+<!-- ═══════════ PAGE 1: 总览 ═══════════ -->
+<section class="page active" id="page-dashboard" aria-label="总览面板">
+  <div id="summary-cards" class="summary-grid">
+    <div class="skeleton skeleton-card"></div>
+    <div class="skeleton skeleton-card"></div>
+    <div class="skeleton skeleton-card"></div>
+    <div class="skeleton skeleton-card"></div>
+    <div class="skeleton skeleton-card"></div>
+    <div class="skeleton skeleton-card"></div>
+  </div>
+
+  <div class="budget-card">
+    <input type="range" id="budget-slider" min="500" max="5000" step="100" value="1500" oninput="onBudgetChange()" aria-label="月预算金额">
+    <span>月预算线：<b id="budget-label" style="color:var(--danger);">¥1,500</b></span>
+  </div>
+
+  <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()" role="button" tabindex="0" aria-label="上传账单文件">
+    <input type="file" id="file-input" accept=".csv,.xlsx,.xls" multiple onchange="handleFiles(this.files)">
+    <div class="dz-text">📂 拖拽 CSV / XLSX 文件到此处，或点击选择</div>
+    <div class="dz-hint">支付宝账单 (.csv) 或 微信账单 (.xlsx) 均可自动识别</div>
+  </div>
+  <div class="upload-status" id="upload-status"></div>
+  <div class="file-list" id="file-list"></div>
+  <button class="merge-btn" id="merge-btn" onclick="triggerMerge()" style="display:none;">⚡ 合并到主数据</button>
+  <button class="merge-btn" id="clear-data-btn" onclick="triggerClearData()" style="display:none; background:var(--danger);">🗑 清除所有数据</button>
+  <div class="merge-result" id="merge-result"></div>
+
+  <div class="section-header">📈 月度分析</div>
+
+  <div class="chart-grid">
+    <div class="chart-panel"><h3>月度支出趋势</h3><div class="cp-hint">红色柱 = 超出月预算；虚线 = 预算线</div><div id="ov-expense" class="plot-lg"></div></div>
+    <div class="chart-panel"><h3>消费分类占比</h3><div class="cp-hint">环形内圈为总支出，外圈为各分类金额占比</div><div id="ov-cat-pie" class="plot-lg"></div></div>
+  </div>
+
+  <div class="section-header">💰 资产与排名</div>
+
+  <div class="chart-grid">
+    <div class="chart-panel"><h3>个人资产累积趋势</h3><div class="cp-hint">初始资产为 0，净现金流逐月累加</div><div id="ov-assets" class="plot-lg"></div></div>
+    <div class="chart-panel">
+      <h3>年度 Top 3 月份</h3>
+      <div class="cp-hint">选择年份，查看该年收入/支出/结余/交易次数的 Top 3 月份</div>
+      <label for="top3-year" style="display:none;">选择年份</label>
+      <select id="top3-year" onchange="loadYearlyTop3()" style="margin-bottom:8px;"><option value="">选择年份</option></select>
+      <div id="ov-top3" style="min-height:400px;"></div>
+    </div>
+  </div>
+
+  <div class="intro-banner collapsed" id="intro-banner">
+    <div class="intro-toggle" onclick="this.parentElement.classList.toggle('collapsed')" role="button" tabindex="0" aria-expanded="false">
+      <h2>📖 使用说明 <span class="toggle-arrow">▸</span></h2>
+    </div>
+    <div class="intro-body">
+      <div class="usage-grid">
+        <div class="usage-card"><div class="uc-icon">📊</div><div class="uc-name">总览</div><div class="uc-desc">财务画像 · 趋势 · 资产</div></div>
+        <div class="usage-card"><div class="uc-icon">🔬</div><div class="uc-name">分析</div><div class="uc-desc">趋势 · 钻取 · 对比 · 预测</div></div>
+        <div class="usage-card"><div class="uc-icon">⚠️</div><div class="uc-name">预警</div><div class="uc-desc">多样性 · 环比异常</div></div>
+        <div class="usage-card"><div class="uc-icon">💸</div><div class="uc-name">关系</div><div class="uc-desc">社交转账 · 3D流向</div></div>
+        <div class="usage-card"><div class="uc-icon">🔍</div><div class="uc-name">搜索</div><div class="uc-desc">模糊搜索所有记录</div></div>
+        <div class="usage-card"><div class="uc-icon">📂</div><div class="uc-name">上传</div><div class="uc-desc">拖拽文件 · 合并清洗</div></div>
+      </div>
+      <div class="intro-metrics">
+        <div class="metric-item"><b>🏥 恩格尔系数</b> <span class="formula">= 餐饮支出 ÷ 总支出</span> | &lt;40% 富裕，40-50% 小康，50-59% 温饱，&gt;59% 贫困</div>
+        <div class="metric-item"><b>💰 储蓄率</b> <span class="formula">= (总收入 - 总支出) ÷ 总收入</span> | &gt;30% 优秀，20-30% 良好</div>
+        <div class="metric-item"><b>🩺 财务健康评分</b> <span class="formula">加权综合 (0-100)</span> | 储蓄率(35%) + 恩格尔(25%) + 预算偏差(25%) + 波动(15%)</div>
+        <div class="metric-item"><b>🔗 关联规则</b> <span class="formula">Lift = 置信度 ÷ 后项概率</span> | &gt;1 正相关，商户/商品/品类三级可切换</div>
+        <div class="metric-item"><b>📈 Prophet预测</b> <span class="formula">加法时间序列模型</span> | 自动检测年周期+趋势变化</div>
+      </div>
+      <div class="msg-column"><h3>📨 系统消息</h3><div class="msg-list" id="msg-list"><div class="msg-item"><span class="msg-dot">⏳</span><span>加载中...</span></div></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ PAGE 2: 分析 ═══════════ -->
+<section class="page" id="page-analysis" aria-label="分析面板">
+  <div class="analysis-tabs" id="analysis-tabs" role="tablist" aria-label="分析子页面">
+    <button class="analysis-tab active" data-atab="trend" role="tab" aria-selected="true">📈 趋势</button>
+    <button class="analysis-tab" data-atab="drill" role="tab" aria-selected="false">🔍 钻取</button>
+    <button class="analysis-tab" data-atab="compare" role="tab" aria-selected="false">🆚 对比</button>
+    <button class="analysis-tab" data-atab="alert" role="tab" aria-selected="false">⚠️ 预警</button>
+    <button class="analysis-tab" data-atab="forecast" role="tab" aria-selected="false">🔮 预测</button>
+    <button class="analysis-tab" data-atab="detail" role="tab" aria-selected="false">📋 明细</button>
+    <button class="analysis-tab" data-atab="social" role="tab" aria-selected="false">💸 关系</button>
+    <button class="analysis-tab" data-atab="search" role="tab" aria-selected="false">🔎 搜索</button>
+  </div>
+  <div class="analysis-section active" id="asec-trend" role="tabpanel"><div class="skeleton skeleton-chart"></div></div>
+  <div class="analysis-section" id="asec-drill" role="tabpanel"><div class="skeleton skeleton-chart"></div></div>
+  <div class="analysis-section" id="asec-compare" role="tabpanel"><div class="skeleton skeleton-chart"></div></div>
+  <div class="analysis-section" id="asec-alert" role="tabpanel"><div class="skeleton skeleton-chart"></div></div>
+  <div class="analysis-section" id="asec-forecast" role="tabpanel"><div class="skeleton skeleton-chart"></div></div>
+  <div class="analysis-section" id="asec-detail" role="tabpanel"><div class="skeleton skeleton-chart"></div></div>
+  <div class="analysis-section" id="asec-social" role="tabpanel"><div class="skeleton skeleton-chart"></div></div>
+  <div class="analysis-section" id="asec-search" role="tabpanel"><div class="skeleton skeleton-chart"></div></div>
+</section>
+</main>
+
+<!-- ═══════════ Fullscreen overlay ═══════════ -->
+<div class="chart-fullscreen" id="chart-fullscreen" role="dialog" aria-label="图表全屏">
+  <div class="fs-content"><button class="fs-close" onclick="closeFullscreen()" aria-label="关闭全屏">×</button><div class="fs-body" id="fs-body"></div></div>
+</div>
+
+<footer class="app-footer">数据基于微信支付宝流水 · 分析结果仅供参考</footer>
+
+<script src="app.js?v=3"></script>
+</body>
+</html>

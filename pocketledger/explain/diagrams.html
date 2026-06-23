@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PocketLedger · 项目架构图</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  body {
+    font-family: "Inter","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    background: #F6F3F0; color: #1F2937; padding: 40px; max-width: 1100px; margin: auto;
+  }
+  h1 { font-size: 24px; font-weight: 800; color: #4F6BED; margin-bottom: 4px; }
+  h2 { font-size: 18px; font-weight: 700; margin: 36px 0 12px; color: #1F2937; border-bottom: 2px solid #E5E7EB; padding-bottom: 8px; }
+  .mermaid {
+    background: #fff; border-radius: 14px; padding: 24px; margin: 16px 0;
+    border: 1px solid #E5E7EB; box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .subtitle { color: #6B7280; font-size: 14px; margin-bottom: 24px; }
+</style>
+</head>
+<body>
+
+<h1>💎 PocketLedger</h1>
+<p class="subtitle">个人财务分析系统 · 模块架构图</p>
+
+<h2>1. 整体架构</h2>
+<div class="mermaid">
+flowchart TB
+    subgraph UPLOAD["📂 上传层"]
+        PX["微信 .xlsx"]
+        PC["支付宝 .csv"]
+    end
+
+    subgraph PY["🐍 Python 后端"]
+        MERGE["mypayment_merge.py<br/>账单合并"]
+        CLEAN["mypayment_clean.py<br/>数据清洗"]
+        METRICS["mypayment_metrics.py<br/>指标计算 (15+ 函数)"]
+        API["mypayment_api.py<br/>FastAPI · 30+ 端点"]
+        KW["category_keywords.json<br/>分类关键词"]
+        CSV[("data/<br/>my_payment.csv")]
+    end
+
+    subgraph WEB["🌐 前端 static/"]
+        HTML["index.html"]
+        CSS["style.css"]
+        JS["app.js · Plotly 29+ 图表"]
+    end
+
+    subgraph OUT["📊 输出"]
+        C1["统计卡片"]
+        C2["Plotly 图表"]
+        C3["数据表格"]
+    end
+
+    PX & PC -->|拖拽上传| API
+    API -->|POST /merge-and-clean| MERGE
+    MERGE -->|解析·去重·写| CSV
+    CSV --> CLEAN -->|清洗后 _df| API
+    CLEAN --> METRICS
+    KW --> METRICS
+    METRICS -->|compute_* 函数| API
+    API -->|REST JSON| JS
+    JS -->|Plotly.newPlot| C2
+    JS -->|innerHTML| C1 & C3
+    HTML --> CSS
+</div>
+
+<h2>2. 数据流转时序</h2>
+<div class="mermaid">
+sequenceDiagram
+    participant U as 👤 用户
+    participant B as 🌐 浏览器
+    participant A as ⚡ FastAPI
+    participant M as 🔀 merge.py
+    participant C as 🧹 clean.py
+    participant MT as 📊 metrics.py
+    participant CSV as 💾 my_payment.csv
+
+    Note over U,CSV: ═══ 上传 & 合并 ═══
+    U->>B: 拖拽账单文件
+    B->>A: POST /api/upload
+    A->>A: 保存到 predata/
+    B->>A: POST /api/merge-and-clean
+    A->>M: merge_predata()
+    M->>M: 扫描 predata/ 全部文件
+    M->>M: 解析 WeChat XLSX + Alipay CSV
+    M->>M: (时间|商户|金额) 去重
+    M->>CSV: 写入统一 CSV
+    M-->>A: 合并完成
+    A->>C: clean_data()
+    C->>CSV: 读取
+    C->>C: 10步清洗流水线
+    C-->>A: 清洗后 _df
+    A-->>B: JSON 响应
+
+    Note over U,CSV: ═══ 仪表盘 ═══
+    B->>A: GET /api/summary
+    A->>MT: compute_monthly_stats()
+    A->>MT: classify_expenses()
+    A->>MT: compute_financial_indicators()
+    A->>MT: compute_health_score()
+    MT-->>A: 统计数据
+    A-->>B: JSON
+    B->>B: 数字动画 · 6卡片 + 4图表
+
+    Note over U,CSV: ═══ 钻取 ═══
+    U->>B: 选择 按月→2026
+    B->>A: GET /api/drill-level?level=month&year=2026
+    A->>A: 过滤 & 按月分组
+    A-->>B: 6个月数据
+    B->>B: Plotly 柱状图 (1月~6月)
+</div>
+
+<h2>3. API 端点全景</h2>
+<div class="mermaid">
+flowchart LR
+    subgraph CORE["核心"]
+        S["GET /summary"]
+        Y["GET /year-months"]
+    end
+    subgraph DASH["总览"]
+        ME["GET /monthly-expense"]
+        CAT["GET /categories"]
+        AT["GET /asset-trend-full"]
+        T3["GET /yearly-top3"]
+    end
+    subgraph ANAL["分析"]
+        TR["GET /category-monthly-trend"]
+        DL["GET /drill-level"]
+        MC["GET /month-compare"]
+        AL["GET /diversity-trend"]
+        MM["GET /mom-anomalies"]
+        FC["GET /forecast"]
+        DC["GET /decompose"]
+        AN["GET /anomalies"]
+        HO["GET /holidays"]
+        MT["GET /merchants"]
+        AR["GET /association-rules"]
+        SO["GET /social"]
+        SE["GET /search"]
+    end
+    subgraph UP["上传"]
+        UP1["POST /upload"]
+        UP2["GET /uploads"]
+        UP3["DELETE /uploads/:name"]
+        UP4["POST /merge-and-clean"]
+    end
+    subgraph SYS["系统"]
+        HB["POST /heartbeat"]
+        MSG["GET /system-messages"]
+    end
+</div>
+
+<h2>4. 清洗流水线 (10步)</h2>
+<div class="mermaid">
+flowchart TD
+    S1["1. 时间转换<br/>pd.to_datetime dayfirst=False"] -->
+    S2["2. 金额转换<br/>去 ¥/, → numeric"] -->
+    S3["3. goods '/' → ''"] -->
+    S4["4. 文本清洗<br/>6列 \\n\\r\\t → 空格"] -->
+    S5["5. keeper '^发给' 去除"] -->
+    S6["6. 退款标记<br/>order_type/status 含'退款'"] -->
+    S7["7. 去重<br/>仅对非空 order_num"] -->
+    S8["8. ID 重编号"] -->
+    S9["9. 时间派生<br/>month / weekday / hour"] -->
+    S10["10. 质量报告<br/>NaT / NaN / 退款 / 空goods"]
+</div>
+
+<h2>5. 分类关键词体系</h2>
+<div class="mermaid">
+flowchart LR
+    subgraph IN["输入字段"]
+        G["goods"]
+        K["keeper"]
+    end
+    subgraph COARSE["粗分类 10类"]
+        F1["餐饮 (80+ kw)"]
+        F2["交通出行 (40+)"]
+        F3["购物消费 (60+)"]
+        F4["生活日用 (40+)"]
+        F5["通讯网络 (10)"]
+        F6["居住缴费 (15)"]
+        F7["医疗健康 (15)"]
+        F8["教育培训 (20)"]
+        F9["转账红包 (5)"]
+        F0["其他"]
+    end
+    subgraph FINE["细分类 20类"]
+        D1["外卖"]
+        D2["茶饮咖啡"]
+        D3["正餐"]
+        D4["超市便利"]
+        D5["电商网购"]
+        D6["共享出行"]
+        D7["网约车"]
+        D8["话费充值"]
+        D9["...等"]
+    end
+
+    G & K -->|关键词匹配| COARSE
+    F1 -->|细分类子匹配| D1 & D2 & D3
+    F3 -->|细分类子匹配| D4 & D5
+    F2 -->|细分类子匹配| D6 & D7
+    F5 -->|细分类子匹配| D8
+</div>
+
+<h2>6. 关联规则三级别</h2>
+<div class="mermaid">
+flowchart TB
+    subgraph LEVEL["Apriori · 按周购物篮"]
+        L1["商户级别 (merchant)<br/>basket_key=keeper<br/>min_weeks≥5 · Lift>2.5<br/>单商户对单商户<br/>—<br/>食堂超市 → 合作食堂 Lift=6.5"]
+        L2["商品级别 (goods) 🆕<br/>basket_key=keeper+goods<br/>min_weeks≥3 · Lift>1.5<br/>单商品对单商品<br/>—<br/>东北饺子馆 → 馨永餐饮店 Lift=7.3"]
+        L3["分类级别 (category)<br/>basket_key=fine_category<br/>min_weeks≥3 · Lift>1.2<br/>品类宏观关联<br/>—<br/>教育培训 → 正餐 Lift=1.4"]
+    end
+</div>
+
+<h2>7. 前端加载时序</h2>
+<div class="mermaid">
+flowchart TD
+    INIT["init() 页面加载"] -->
+    FETCH["Promise.all<br/>GET /api/summary<br/>GET /api/year-months"] -->
+    CARDS["renderSummaryCards()<br/>6 张统计卡片 + accent颜色"] -->
+    ANIM["animateNumbers()<br/>数字从 0 滚到目标值<br/>cubic ease-out 800ms"] -->
+    DASH["loadDashboard()"]
+    FETCH --> MSG["fetchMessages()<br/>系统消息列"]
+    DASH --> CH1["ov-expense 月度支出柱状图"]
+    DASH --> CH2["ov-cat-pie 分类环形图"]
+    DASH -.->|异步| CH3["ov-assets 资产趋势"]
+    DASH -.->|异步| CH4["loadYearlyTop3()"]
+</div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    themeVariables: {
+      fontFamily: '"Inter","PingFang SC","Microsoft YaHei",sans-serif',
+      primaryColor: '#EEF2FF',
+      primaryBorderColor: '#4F6BED',
+      primaryTextColor: '#1F2937',
+      lineColor: '#8B5CF6',
+      secondaryColor: '#F5F3FF',
+      tertiaryColor: '#F6F3F0',
+      noteBkgColor: '#FFFBEB',
+      noteTextColor: '#1F2937',
+    },
+  });
+</script>
+
+</body>
+</html>
